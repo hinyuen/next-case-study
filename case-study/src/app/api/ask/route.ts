@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
         data: {
             email: result.data.email,
             orderId: result.data.orderId,
+            question: result.data.question,
         },
     });
     // Return the event ID so the frontend can poll for status/result

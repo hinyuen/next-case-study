@@ -1,7 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { z } from 'zod';
-
+import { useInngestSubscription } from '@inngest/realtime/hooks';
+import { fetchRealtimeSubscriptionToken } from './actions';
+import { useChat } from '@ai-sdk/react';
+import { InputData } from '@/inngest/orderLookup';
 const schema = z.object({
     email: z.email(),
     orderId: z.string().optional(),
@@ -10,7 +13,44 @@ const schema = z.object({
 
 export default function Home() {
     const [form, setForm] = useState({ email: '', orderId: '', question: '' });
-    const [error, setError] = useState<string | null>(null);
+    const [inputError, setError] = useState<string | null>(null);
+    const [testResult, setTestResult] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [subscriptionInput, setSubscriptionInput] = useState<InputData | null>(null);
+
+    // Only subscribe if email is present (and optionally orderId/question)
+    console.log('subscriptionInput:', subscriptionInput);
+    const { data, error } = useInngestSubscription(
+        subscriptionInput
+            ? {
+                  refreshToken: () => {
+                      const channelKey = JSON.stringify({
+                          email: form.email,
+                          orderId: form.orderId,
+                          question: form.question,
+                      });
+                      console.log('[Frontend subscribe] channel:', channelKey);
+                      return fetchRealtimeSubscriptionToken(subscriptionInput);
+                  },
+              }
+            : { refreshToken: async () => undefined }
+    );
+
+    async function handleTest() {
+        setTestResult(null);
+        setError(null);
+        try {
+            const res = await fetch('/api/test');
+            const data = await res.json();
+            if (!res.ok) {
+                setError(data.error || 'Test failed.');
+            } else {
+                setTestResult(data.message || 'Test succeeded.');
+            }
+        } catch (err) {
+            setError('Network error. Please try again.');
+        }
+    }
 
     function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
         setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -19,12 +59,15 @@ export default function Home() {
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
+        const cloned = structuredClone(form);
+        setSubscriptionInput(cloned); // triggers new subscription
         const result = schema.safeParse(form);
         if (!result.success) {
             setError('Invalid input.');
             return;
         }
         setError(null);
+        setLoading(true);
         try {
             const res = await fetch('/api/ask', {
                 method: 'POST',
@@ -34,13 +77,16 @@ export default function Home() {
             const data = await res.json();
             if (!res.ok) {
                 setError(data.error || 'Something went wrong.');
-            } else {
-                // handle success (e.g., show result, clear form, etc)
             }
         } catch (err) {
+            console.log('Error submitting form:', err);
             setError('Network error. Please try again.');
+        } finally {
+            setLoading(false);
         }
     }
+
+    console.log('data => ', data);
 
     return (
         <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
@@ -85,9 +131,9 @@ export default function Home() {
                             onChange={handleChange}
                         />
                     </label>
-                    {error && (
+                    {inputError && (
                         <div className="text-red-600 text-sm font-medium" role="alert">
-                            {error}
+                            {inputError}
                         </div>
                     )}
                     <div className="flex gap-2">
@@ -100,10 +146,37 @@ export default function Home() {
                         <button
                             type="button"
                             className="bg-gray-400 text-white rounded px-4 py-2 font-semibold hover:bg-gray-500 transition"
+                            onClick={handleTest}
                         >
                             Try an example
                         </button>
                     </div>
+                    {/* <div className="flex flex-col w-full max-w-md py-24 mx-auto stretch">
+                        {messages.map((message) => (
+                            <div key={message.id} className="whitespace-pre-wrap">
+                                {message.role === 'user' ? 'User: ' : 'AI: '}
+                                {message.parts.map((part, i) => {
+                                    switch (part.type) {
+                                        case 'text':
+                                            return <div key={`${message.id}-${i}`}>{part.text}</div>;
+                                    }
+                                })}
+                            </div>
+                        ))}
+                    </div> */}
+                    <div>
+                        <h1>Realtime AI Response</h1>
+                        {loading && <div className="text-blue-500">Loading AI response...</div>}
+                        {error && <div className="text-red-500">Subscription error: {error.message}</div>}
+                        {data && data.length > 0 ? (
+                            <div className="whitespace-pre-wrap bg-gray-100 rounded p-2 mt-2">
+                                {data[data.length - 1].data.response}
+                            </div>
+                        ) : !loading ? (
+                            <div className="text-gray-400">No AI response yet.</div>
+                        ) : null}
+                    </div>
+                    <button onClick={() => console.log('form', form)}>Log</button>
                 </form>
             </main>
         </div>
