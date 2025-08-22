@@ -10,10 +10,14 @@
     "db:import": "npx tsx scripts/import-csv.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.19",
+    "@ai-sdk/react": "^2.0.22",
+    "ai": "^5.0.22",
     "inngest": "^3.40.1",
     "next": "15.5.0",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
