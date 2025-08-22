@@ -1,10 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { z } from 'zod';
 import { useInngestSubscription } from '@inngest/realtime/hooks';
 import { fetchRealtimeSubscriptionToken } from './actions';
-import { useChat } from '@ai-sdk/react';
-import { InputData } from '@/inngest/orderLookup';
 const schema = z.object({
     email: z.email(),
     orderId: z.string().optional(),
@@ -14,43 +12,28 @@ const schema = z.object({
 export default function Home() {
     const [form, setForm] = useState({ email: '', orderId: '', question: '' });
     const [inputError, setError] = useState<string | null>(null);
-    const [testResult, setTestResult] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [subscriptionInput, setSubscriptionInput] = useState<InputData | null>(null);
 
     // Only subscribe if email is present (and optionally orderId/question)
-    console.log('subscriptionInput:', subscriptionInput);
-    const { data, error } = useInngestSubscription(
-        subscriptionInput
-            ? {
-                  refreshToken: () => {
-                      const channelKey = JSON.stringify({
-                          email: form.email,
-                          orderId: form.orderId,
-                          question: form.question,
-                      });
-                      console.log('[Frontend subscribe] channel:', channelKey);
-                      return fetchRealtimeSubscriptionToken(subscriptionInput);
-                  },
-              }
-            : { refreshToken: async () => undefined }
-    );
+    const { data, error } = useInngestSubscription({ refreshToken: fetchRealtimeSubscriptionToken });
+    const [streamedText, setStreamedText] = useState('');
+    const lastIndexRef = useRef(0);
 
-    async function handleTest() {
-        setTestResult(null);
-        setError(null);
-        try {
-            const res = await fetch('/api/test');
-            const data = await res.json();
-            if (!res.ok) {
-                setError(data.error || 'Test failed.');
-            } else {
-                setTestResult(data.message || 'Test succeeded.');
-            }
-        } catch (err) {
-            setError('Network error. Please try again.');
+    // Append new chunks to streamedText as they arrive
+    useEffect(() => {
+        if (!data || data.length === 0) {
+            setStreamedText('');
+            lastIndexRef.current = 0;
+            return;
         }
-    }
+        // Only process new data
+        for (let i = lastIndexRef.current; i < data.length; i++) {
+            setStreamedText((prev) => prev + data[i].data.response);
+        }
+        lastIndexRef.current = data.length;
+    }, [data]);
+
+    async function handleTest() {}
 
     function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
         setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -59,8 +42,6 @@ export default function Home() {
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
-        const cloned = structuredClone(form);
-        setSubscriptionInput(cloned); // triggers new subscription
         const result = schema.safeParse(form);
         if (!result.success) {
             setError('Invalid input.');
@@ -85,8 +66,6 @@ export default function Home() {
             setLoading(false);
         }
     }
-
-    console.log('data => ', data);
 
     return (
         <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
@@ -151,32 +130,18 @@ export default function Home() {
                             Try an example
                         </button>
                     </div>
-                    {/* <div className="flex flex-col w-full max-w-md py-24 mx-auto stretch">
-                        {messages.map((message) => (
-                            <div key={message.id} className="whitespace-pre-wrap">
-                                {message.role === 'user' ? 'User: ' : 'AI: '}
-                                {message.parts.map((part, i) => {
-                                    switch (part.type) {
-                                        case 'text':
-                                            return <div key={`${message.id}-${i}`}>{part.text}</div>;
-                                    }
-                                })}
-                            </div>
-                        ))}
-                    </div> */}
                     <div>
                         <h1>Realtime AI Response</h1>
                         {loading && <div className="text-blue-500">Loading AI response...</div>}
                         {error && <div className="text-red-500">Subscription error: {error.message}</div>}
-                        {data && data.length > 0 ? (
-                            <div className="whitespace-pre-wrap bg-gray-100 rounded p-2 mt-2">
-                                {data[data.length - 1].data.response}
+                        {streamedText ? (
+                            <div className="whitespace-pre-wrap bg-gray-100 rounded p-2 mt-2 text-black">
+                                {streamedText}
                             </div>
-                        ) : !loading ? (
-                            <div className="text-gray-400">No AI response yet.</div>
+                        ) : loading ? (
+                            <div className="text-blue-500">Loading AI response...</div>
                         ) : null}
                     </div>
-                    <button onClick={() => console.log('form', form)}>Log</button>
                 </form>
             </main>
         </div>

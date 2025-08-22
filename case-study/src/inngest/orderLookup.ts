@@ -16,7 +16,7 @@ export type InputData = {
 
 // create a channel for each user, given a user ID. A channel is a namespace for one or more topics of streams.
 
-const _userChannel = channel((input: InputData) => `user:${input.email}`).addTopic(
+const _userChannel = channel((id: string) => `user:${id}`).addTopic(
     topic('ai').schema(
         z.object({
             response: z.string(),
@@ -27,21 +27,6 @@ const _userChannel = channel((input: InputData) => `user:${input.email}`).addTop
 
 export const userChannel = _userChannel;
 export type UserChannel = typeof userChannel;
-
-// we can also create global channels that do not require input
-// const logsChannel = channel('logs').addTopic(topic('info').type<string>());
-
-// inngest.createFunction({ id: 'some-task' }, { event: 'ai/ai.requested' }, async ({ event, step, publish }) => {
-//     // Publish data to the given channel, on the given topic.
-//     await publish(
-//         userChannel(event.data.userId).ai({
-//             response: 'an llm response here',
-//             success: 1,
-//         })
-//     );
-
-//     await publish(logsChannel().info('All went well'));
-// });
 
 export const orderLookup = inngest.createFunction(
     { id: 'order-lookup-fn' },
@@ -57,48 +42,35 @@ export const orderLookup = inngest.createFunction(
         }
         const orders = db.prepare(sql).all(...params);
 
-        console.log('orders => ', orders);
-
-        let aiPrompt = '';
-        const systemPrompt =
-            'Answer only using the provided orders/tracking data. If there is no exact match or it’s ambiguous, say so and suggest adding an order ID. Do not guess or invent dates or events.';
-        if (!orders.length) {
-            aiPrompt = `User question: ${
-                question || 'Where is my order?'
-            }\nNo matching order found for email: ${email}${orderId ? ` and orderId: ${orderId}` : ''}.`;
-        } else if (orders.length > 1) {
-            aiPrompt = `User question: ${
-                question || 'Where is my order?'
-            }\nMultiple plausible orders found for email: ${email}${
-                orderId ? ` and orderId: ${orderId}` : ''
-            }. Orders: ${JSON.stringify(orders, null, 2)}`;
-        } else {
-            aiPrompt = `User question: ${question || 'Where is my order?'}\nOrder data: ${JSON.stringify(
-                orders[0],
-                null,
-                2
-            )}`;
-        }
-
         // Stream the AI response
         const stream = streamText({
-            model: openai('gpt-4o'),
-            prompt: `${systemPrompt}\n${aiPrompt}`,
+            model: openai('gpt-5-nano'),
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are a helpful support agent. Here is the order data:\n${JSON.stringify(
+                        orders[0]
+                    )}\n\nInstructions:\nPlease make your response readable, if have any time value please format into YYYY-MM-DD \n- Cite the platformOrderId in your answer.\n- Include the latest known status if present.\n- Avoid giving definitive delivery dates.\n- Make your response human-quality and friendly.`,
+                },
+                {
+                    role: 'user',
+                    content: JSON.stringify(question) || 'No question provided.',
+                },
+            ],
         });
-        let streamedText = '';
+        // let streamedText = '';
         let chunkIndex = 0;
         for await (const chunk of stream.textStream) {
-            streamedText += chunk;
-            const channelKey = JSON.stringify({ email, orderId, question });
-            console.log('[Inngest publish] channel:', channelKey, 'streamedText:', streamedText);
-            await step.run(`publish:user:${email}:${chunkIndex++}`, async () => {
+            // Publish only the new chunk for smooth streaming
+            await step.run(`publish:user:123:${chunkIndex++}`, async () => {
                 await publish(
-                    userChannel({ email, orderId, question }).ai({
-                        response: streamedText,
+                    userChannel('123').ai({
+                        response: chunk,
                         success: 1,
                     })
                 );
             });
+            // streamedText += chunk;
         }
     }
 );
