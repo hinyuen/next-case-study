@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:import": "npx tsx scripts/import-csv.ts"
   },
   "dependencies": {
     "inngest": "^3.40.1",
