@@ -11,4 +11,5 @@ export const { GET, POST, PUT } = serve({
         orderLookup,
         /* your functions will be passed here later! */
     ],
+    streaming: 'force',
 });

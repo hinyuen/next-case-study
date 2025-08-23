@@ -34,7 +34,7 @@ export const orderLookup = inngest.createFunction(
     async ({ event, publish, step }) => {
         console.log('called');
         const { email, orderId, question } = event.data;
-        let sql = 'SELECT * FROM orders WHERE customerEmail = ?';
+        let sql = 'SELECT orderPublicId, customerName, orderStatus, deliveredAt FROM orders WHERE customerEmail = ?';
         const params: string[] = [email];
         if (orderId) {
             sql += ' AND orderPublicId = ?';
@@ -58,19 +58,22 @@ export const orderLookup = inngest.createFunction(
                 },
             ],
         });
-        // let streamedText = '';
+        let streamedText = '';
         let chunkIndex = 0;
+
+        // const textValue = stream.toTextStreamResponse();
+
         for await (const chunk of stream.textStream) {
+            streamedText += chunk;
             // Publish only the new chunk for smooth streaming
             await step.run(`publish:user:123:${chunkIndex++}`, async () => {
                 await publish(
                     userChannel('123').ai({
-                        response: chunk,
+                        response: streamedText,
                         success: 1,
                     })
                 );
             });
-            // streamedText += chunk;
         }
     }
 );

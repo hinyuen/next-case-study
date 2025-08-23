@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { z } from 'zod';
 import { useInngestSubscription } from '@inngest/realtime/hooks';
 import { fetchRealtimeSubscriptionToken } from './actions';
@@ -15,23 +15,9 @@ export default function Home() {
     const [loading, setLoading] = useState(false);
 
     // Only subscribe if email is present (and optionally orderId/question)
-    const { data, error } = useInngestSubscription({ refreshToken: fetchRealtimeSubscriptionToken });
-    const [streamedText, setStreamedText] = useState('');
-    const lastIndexRef = useRef(0);
-
-    // Append new chunks to streamedText as they arrive
-    useEffect(() => {
-        if (!data || data.length === 0) {
-            setStreamedText('');
-            lastIndexRef.current = 0;
-            return;
-        }
-        // Only process new data
-        for (let i = lastIndexRef.current; i < data.length; i++) {
-            setStreamedText((prev) => prev + data[i].data.response);
-        }
-        lastIndexRef.current = data.length;
-    }, [data]);
+    const { data, error } = useInngestSubscription({
+        refreshToken: fetchRealtimeSubscriptionToken,
+    });
 
     async function handleTest() {}
 
@@ -132,11 +118,12 @@ export default function Home() {
                     </div>
                     <div>
                         <h1>Realtime AI Response</h1>
-                        {loading && <div className="text-blue-500">Loading AI response...</div>}
                         {error && <div className="text-red-500">Subscription error: {error.message}</div>}
-                        {streamedText ? (
+                        {data && data.length > 0 ? (
                             <div className="whitespace-pre-wrap bg-gray-100 rounded p-2 mt-2 text-black">
-                                {streamedText}
+                                {data.map((msg, i) => (
+                                    <span key={i}>{msg.data.response}</span>
+                                ))}
                             </div>
                         ) : loading ? (
                             <div className="text-blue-500">Loading AI response...</div>
